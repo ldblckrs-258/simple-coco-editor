@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COCO Box Editor</title>
+<style>
+  :root{--bg:#14161a;--panel:#1c1f26;--panel-2:#232732;--line:#2e333f;--ink:#e6e9ef;--muted:#8b93a3;--accent:#4ade80;--danger:#f1646c;--warn:#f5b942;
+    font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-size:13px;line-height:1.5;}
+  header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10;}
+  header h1{font-size:14px;margin:0;font-weight:600;letter-spacing:.02em;} header h1 .dot{color:var(--accent);}
+  .spacer{flex:1;}
+  button{font-family:inherit;font-size:12px;cursor:pointer;background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 13px;transition:border-color .12s,background .12s;}
+  button:hover:not(:disabled){border-color:var(--accent);} button:disabled{opacity:.4;cursor:not-allowed;}
+  button.primary{background:var(--accent);color:#08110a;border-color:var(--accent);font-weight:600;} button.primary:hover:not(:disabled){filter:brightness(1.08);}
+  .stat{color:var(--muted);} .stat b{color:var(--ink);font-weight:600;}
+  main{display:flex;height:calc(100vh - 53px);}
+  aside{width:230px;flex-shrink:0;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;}
+  .thumb{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);cursor:pointer;}
+  .thumb:hover{background:var(--panel-2);} .thumb.active{background:var(--panel-2);border-left:3px solid var(--accent);padding-left:9px;}
+  .thumb .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .thumb .ct{color:var(--muted);font-size:11px;}
+  .thumb.empty .ct{color:var(--warn);} .thumb.edited .nm::after{content:" ●";color:var(--warn);}
+  .stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:auto;padding:16px;background:#0d0f12;position:relative;}
+  .canvas-wrap{position:relative;line-height:0;}
+  canvas{border:1px solid var(--line);display:block;}
+  .mode-pill{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:var(--warn);color:#1a1206;font-weight:600;font-size:12px;padding:5px 14px;border-radius:20px;z-index:20;display:none;}
+  .panel{width:290px;flex-shrink:0;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;padding:12px;}
+  .panel h2{font-size:12px;color:var(--muted);margin:0 0 10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+  .box-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;margin-bottom:7px;cursor:pointer;}
+  .box-item.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;} .box-item.removed{opacity:.35;}
+  .box-item .swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0;} .box-item .lbl{flex:1;overflow:hidden;}
+  .box-item .lbl .cat{font-weight:600;} .box-item .lbl .dim{color:var(--muted);font-size:11px;} .box-item .raw{color:var(--warn);font-size:11px;}
+  .box-item button{padding:4px 8px;font-size:11px;} .box-item button.del{color:var(--danger);border-color:transparent;background:transparent;}
+  .box-item button.del:hover{background:rgba(241,100,108,.12);border-color:var(--danger);} .box-item button.undo{color:var(--accent);}
+  .editor{background:var(--panel-2);border:1px solid var(--accent);border-radius:8px;padding:12px;margin-bottom:12px;}
+  .editor h3{margin:0 0 8px;font-size:12px;color:var(--accent);}
+  .editor label{display:block;color:var(--muted);font-size:11px;margin:8px 0 3px;}
+  .editor select{width:100%;font-family:inherit;font-size:12px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px;}
+  .editor .coords{color:var(--muted);font-size:11px;margin-top:8px;} .editor .editor-actions{display:flex;gap:6px;margin-top:10px;}
+  .catkeys{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:12px;}
+  .catkeys h3{margin:0 0 8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+  .catkeys .row{display:flex;align-items:center;gap:7px;padding:2px 0;}
+  .catkeys .key{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:var(--bg);border:1px solid var(--line);border-radius:4px;font-size:11px;flex-shrink:0;}
+  .catkeys .sw{width:10px;height:10px;border-radius:2px;}
+  .empty-state{text-align:center;color:var(--muted);max-width:470px;padding:40px;}
+  .empty-state code{background:var(--panel-2);padding:2px 6px;border-radius:4px;color:var(--ink);}
+  .empty-state kbd{background:var(--panel-2);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 6px;font-size:11px;}
+  .popup-mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:50;display:none;align-items:center;justify-content:center;}
+  .popup{background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:18px;width:280px;}
+  .popup h3{margin:0 0 12px;font-size:13px;}
+  .popup .opt{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;margin-bottom:6px;cursor:pointer;}
+  .popup .opt:hover{border-color:var(--accent);background:var(--panel-2);}
+  .popup .opt .key{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;background:var(--bg);border:1px solid var(--line);border-radius:4px;font-size:11px;}
+  .popup .opt .sw{width:11px;height:11px;border-radius:3px;}
+  .popup .cancel{width:100%;margin-top:6px;}
+  .tabs{display:flex;gap:4px;margin-bottom:12px;}
+  .tab{flex:1;padding:7px;font-size:12px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;color:var(--muted);}
+  .tab.active{background:var(--accent);color:#08110a;border-color:var(--accent);font-weight:600;}
+  .class-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;margin-bottom:7px;overflow:hidden;}
+  .class-item .sw{width:13px;height:13px;border-radius:3px;flex-shrink:0;}
+  .class-item input{flex:1;min-width:0;font-family:inherit;font-size:12px;background:var(--bg);color:var(--ink);border:1px solid transparent;border-radius:5px;padding:5px 7px;}
+  .class-item input:focus{border-color:var(--accent);outline:none;}
+  .class-item .cnt{color:var(--muted);font-size:11px;flex-shrink:0;white-space:nowrap;}
+  .class-item button.del{color:var(--danger);border-color:transparent;background:transparent;padding:4px 8px;font-size:11px;flex-shrink:0;}
+  .class-item button.del:hover{background:rgba(241,100,108,.12);border-color:var(--danger);}
+  .addcat{display:flex;gap:6px;margin-top:6px;}
+  .addcat input{flex:1;font-family:inherit;font-size:12px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px;}
+  .help-grid{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;align-items:center;}
+  .help-grid kbd,.help-grid .hk{justify-self:start;background:var(--bg);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:2px 8px;font-size:11px;white-space:nowrap;}
+  .help-grid span:not(.hk){color:var(--muted);font-size:12px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>COCO Box Editor <span class="dot">●</span></h1>
+  <button id="openBtn">Open dataset folder…</button>
+  <span class="stat" id="loadStat"></span>
+  <span class="spacer"></span>
+  <span class="stat" id="progStat"></span>
+  <button id="prevBtn" disabled>← Prev</button>
+  <button id="nextBtn" disabled>Next →</button>
+  <button id="zoomReset" disabled>Zoom 100%</button>
+  <button id="helpBtn">? Help</button>
+  <button class="primary" id="saveBtn" disabled>Save</button>
+</header>
+
+<main>
+  <aside id="sidebar"></aside>
+  <div class="stage" id="stage">
+    <div class="empty-state" id="emptyState">
+      <p style="font-size:14px;color:var(--ink);margin-bottom:14px">No data loaded</p>
+      <p>Click <b>Open dataset folder…</b> and pick the folder containing <code>images/</code> and <code>annotations.json</code>.</p>
+      <p style="margin-top:14px"><b style="color:var(--ink)">On image:</b> click to select · drag center = move · drag corner = resize · scroll = zoom.</p>
+      <p style="margin-top:8px"><b style="color:var(--ink)">New boxes:</b> hold <kbd>n</kbd> then drag.</p>
+      <p style="margin-top:8px"><b style="color:var(--ink)">Keys:</b> <kbd>←</kbd><kbd>→</kbd> image · <kbd>1</kbd>…<kbd>9</kbd> set class of selected boxes · <kbd>Del</kbd> delete · <kbd>Esc</kbd> deselect · <kbd>z</kbd> undo · <kbd>0</kbd> zoom 100%.</p>
+      <p style="margin-top:14px;color:var(--warn)">Chrome/Edge: the "Save" button overwrites the original annotations.json directly.</p>
+    </div>
+  </div>
+  <div class="panel" id="panel" style="display:none">
+    <div class="tabs">
+      <button class="tab active" id="tabBoxBtn" data-tab="box">Boxes</button>
+      <button class="tab" id="tabClassBtn" data-tab="class">Classes</button>
+    </div>
+    <div id="tabBox">
+      <div id="editorMount"></div>
+      <div id="catKeysMount"></div>
+      <h2>Boxes in image</h2>
+      <div id="boxList"></div>
+    </div>
+    <div id="tabClass" style="display:none">
+      <h2>Manage categories</h2>
+      <div id="classList"></div>
+      <div class="addcat">
+        <input id="newCatName" placeholder="New class name…" />
+        <button id="addCatBtn" class="primary">+ Add</button>
+      </div>
+      <p class="stat" style="margin-top:10px;font-size:11px">Deleting a class also deletes every boxes using it (cannot be undone).</p>
+    </div>
+  </div>
+</main>
+
+<div class="mode-pill" id="modePill">Draw mode — drag to create (Esc to exit)</div>
+
+<div class="popup-mask" id="helpMask">
+  <div class="popup" style="width:360px">
+    <h3>Keyboard shortcuts</h3>
+    <div class="help-grid">
+      <kbd>←</kbd><span>Previous image</span>
+      <kbd>→</kbd><span>Next image</span>
+      <kbd>1</kbd>–<kbd>9</kbd><span>Set class of selected box</span>
+      <kbd>n</kbd><span>Hold + drag to draw a new box</span>
+      <kbd>Del</kbd><span>Delete selected box</span>
+      <kbd>z</kbd><span>Undo last delete</span>
+      <kbd>Esc</kbd><span>Deselect / exit draw mode</span>
+      <kbd>0</kbd><span>Reset zoom to 100%</span>
+      <kbd>s</kbd><span>Save</span>
+      <kbd>scroll</kbd><span>Zoom in / out at cursor</span>
+    </div>
+    <h3 style="margin-top:14px">Mouse</h3>
+    <div class="help-grid">
+      <span class="hk">click</span><span>Select a box</span>
+      <span class="hk">drag center</span><span>Move box</span>
+      <span class="hk">drag corner</span><span>Resize box</span>
+    </div>
+    <button class="cancel" id="helpClose">Close (Esc)</button>
+  </div>
+</div>
+
+<div class="popup-mask" id="popupMask">
+  <div class="popup">
+    <h3>Pick category for new boxes</h3>
+    <div id="popupOpts"></div>
+    <button class="cancel" id="popupCancel">Cancel (Esc)</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+let coco=null, imageFiles={}, imagesById={}, annsByImage={}, removed=new Set();
+let order=[], cur=-1, lastRemoved=[], catById={}, cats=[];
+let selId=null, editedImages=new Set();
+let imgEl=null, zoom=1, baseScale=1;
+let nextNegId=-1;
+let annFileHandle=null;
+let newBoxMode=false, pendingNew=null, drag=null;
+
+const PALETTE=["#4ade80","#60a5fa","#f5b942","#f1646c","#c084fc","#22d3ee","#fb923c","#a3e635","#f472b6","#94a3b8"];
+const colorForCat=id=>PALETTE[(id-1+PALETTE.length)%PALETTE.length]||PALETTE[0];
+const $=s=>document.querySelector(s);
+const HANDLE=5;
+const round1=v=>Math.round(v*10)/10;
+const warnColor=()=>getComputedStyle(document.documentElement).getPropertyValue("--warn").trim()||"#f5b942";
+
+// ---------- IndexedDB: luu directory handle de mo lai sau refresh ----------
+const IDB_NAME="cocoEditor", IDB_STORE="handles", IDB_KEY="lastDir";
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(IDB_NAME,1);
+    r.onupgradeneeded=()=>r.result.createObjectStore(IDB_STORE);
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });
+}
+async function idbSet(key,val){ const db=await idbOpen();
+  return new Promise((res,rej)=>{ const tx=db.transaction(IDB_STORE,"readwrite");
+    tx.objectStore(IDB_STORE).put(val,key); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+async function idbGet(key){ const db=await idbOpen();
+  return new Promise((res,rej)=>{ const tx=db.transaction(IDB_STORE,"readonly");
+    const rq=tx.objectStore(IDB_STORE).get(key); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); }
+
+async function tryRestoreLastDir(){
+  if(!window.showDirectoryPicker) return;
+  let handle; try{ handle=await idbGet(IDB_KEY); }catch(e){ return; }
+  if(!handle) return;
+  // hien nut mo lai (can user gesture de xin quyen)
+  const bar=document.createElement("div");
+  bar.style.cssText="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--accent);border-radius:8px;padding:10px 14px;z-index:60;display:flex;gap:10px;align-items:center;font-size:12px";
+  bar.innerHTML=`<span>Reopen last folder: <b>${handle.name}</b>?</span>`;
+  const yes=document.createElement("button"); yes.className="primary"; yes.textContent="Reopen";
+  const no=document.createElement("button"); no.textContent="Dismiss";
+  bar.appendChild(yes); bar.appendChild(no); document.body.appendChild(bar);
+  no.onclick=()=>bar.remove();
+  yes.onclick=async ()=>{
+    bar.remove();
+    try{
+      const perm=await handle.requestPermission({mode:"readwrite"});
+      if(perm!=="granted"){ alert("Permission needed to reopen folder."); return; }
+      await loadFromDirHandle(handle);
+    }catch(e){ alert("Could not reopen: "+e.message); }
+  };
+}
+
+// ---------- open folder ----------
+$("#openBtn").onclick=async ()=>{
+  if(window.showDirectoryPicker){
+    let dir; try{ dir=await window.showDirectoryPicker({mode:"readwrite"}); }catch(e){ return; }
+    try{ await idbSet(IDB_KEY, dir); }catch(e){}   // luu de mo lai sau refresh
+    await loadFromDirHandle(dir);
+  } else {
+    alert("Browser does not support overwrite (needs Chrome/Edge). Using regular folder picker — file will download on save.");
+    fallbackInput();
+  }
+};
+async function loadFromDirHandle(dir){
+  imageFiles={}; annFileHandle=null; let annText=null;
+  async function walk(handle){
+    for await(const [name,h] of handle.entries()){
+      if(h.kind==="directory") await walk(h);
+      else if(/^annotations\.json$/i.test(name)){ annFileHandle=h; annText=await (await h.getFile()).text(); }
+      else if(/\.(jpe?g|png|bmp|webp)$/i.test(name)){
+        const file=await h.getFile(); const rec={url:URL.createObjectURL(file),file};
+        imageFiles[name]=rec; imageFiles[name.toLowerCase()]=rec;
+      }
+    }
+  }
+  await walk(dir);
+  if(!annText){ alert("annotations.json not found in folder"); return; }
+  try{ coco=JSON.parse(annText); }catch(e){ alert("annotations.json error: "+e.message); return; }
+  bootData();
+}
+function fallbackInput(){
+  const inp=document.createElement("input"); inp.type="file"; inp.webkitdirectory=true; inp.multiple=true;
+  inp.onchange=async e=>{
+    const files=[...e.target.files]; if(!files.length) return;
+    let annFile=null; imageFiles={};
+    for(const f of files){ const rel=f.webkitRelativePath||f.name;
+      if(/(^|\/)annotations\.json$/i.test(rel)) annFile=f;
+      else if(/\.(jpe?g|png|bmp|webp)$/i.test(rel)){ const base=rel.split("/").pop(); const rec={url:URL.createObjectURL(f),file:f}; imageFiles[base]=rec; imageFiles[base.toLowerCase()]=rec; } }
+    if(!annFile){ alert("annotations.json not found"); return; }
+    coco=JSON.parse(await annFile.text()); annFileHandle=null; bootData();
+  };
+  inp.click();
+}
+function bootData(){
+  indexData();
+  let matched=0; for(const im of coco.images) if(resolveRec(im.file_name)) matched++;
+  const miss=matched<coco.images.length?` · ⚠ ${coco.images.length-matched} missing files`:"";
+  $("#loadStat").textContent=`${coco.images.length} images · ${coco.annotations.length} boxes · ${cats.length} classes · matched ${matched}${miss}`;
+  $("#emptyState").style.display="none"; $("#panel").style.display="block";
+  $("#prevBtn").disabled=$("#nextBtn").disabled=$("#saveBtn").disabled=$("#zoomReset").disabled=false;
+  renderSidebar(); renderCatKeys(); go(0);
+}
+function indexData(){
+  imagesById={}; annsByImage={}; catById={}; removed=new Set(); lastRemoved=[]; editedImages=new Set(); selId=null;
+  cats=(coco.categories||[]).slice();
+  for(const c of cats) catById[c.id]=c.name;
+  for(const im of coco.images){ imagesById[im.id]=im; annsByImage[im.id]=[]; }
+  for(const a of coco.annotations) if(annsByImage[a.image_id]) annsByImage[a.image_id].push(a);
+  order=coco.images.map(im=>im.id);
+}
+function resolveRec(fn){ if(!fn) return null; const b=fn.split("/").pop().split("\\").pop();
+  return imageFiles[fn]||imageFiles[b]||imageFiles[b.toLowerCase()]||null; }
+
+// ---------- sidebar ----------
+function renderSidebar(){
+  const sb=$("#sidebar"); sb.innerHTML="";
+  order.forEach((id,i)=>{
+    const im=imagesById[id]; const live=annsByImage[id].filter(a=>!removed.has(a.id)).length;
+    const el=document.createElement("div");
+    el.className="thumb"+(i===cur?" active":"")+(live===0?" empty":"")+(editedImages.has(id)?" edited":"");
+    el.innerHTML=`<span class="nm">${im.file_name}</span><span class="ct">${live}</span>`;
+    el.onclick=()=>go(i); sb.appendChild(el);
+  });
+}
+function refreshSidebar(){
+  [...$("#sidebar").children].forEach((el,i)=>{
+    const id=order[i]; const live=annsByImage[id].filter(a=>!removed.has(a.id)).length;
+    el.querySelector(".ct").textContent=live;
+    el.classList.toggle("empty",live===0); el.classList.toggle("active",i===cur); el.classList.toggle("edited",editedImages.has(id));
+  });
+}
+function renderCatKeys(){
+  const rows=cats.slice(0,9).map((c,i)=>`<div class="row"><span class="key">${i+1}</span><span class="sw" style="background:${colorForCat(c.id)}"></span>${c.name}</div>`).join("");
+  $("#catKeysMount").innerHTML=`<div class="catkeys"><h3>Number key → category</h3>${rows}</div>`;
+}
+
+// ---------- navigate ----------
+function go(i){
+  if(i<0||i>=order.length) return;
+  cur=i; lastRemoved=[]; selId=null; imgEl=null; zoom=1;
+  const im=imagesById[order[i]]; const stage=$("#stage");
+  [...stage.querySelectorAll(".canvas-wrap")].forEach(x=>x.remove());
+  const rec=resolveRec(im.file_name);
+  const wrap=document.createElement("div"); wrap.className="canvas-wrap";
+  const canvas=document.createElement("canvas"); canvas.id="cv";
+  wrap.appendChild(canvas); stage.appendChild(wrap);
+  if(!rec){ drawNoImage(canvas, im.file_name); }
+  else{
+    const img=new Image(); let tried=false;
+    img.onload=()=>{ imgEl=img; computeBaseScale(); attachCanvas(canvas); redraw(); };
+    img.onerror=()=>{ if(!tried&&rec.file){ tried=true; const fr=new FileReader(); fr.onload=()=>img.src=fr.result; fr.readAsDataURL(rec.file);} else drawNoImage(canvas, im.file_name); };
+    img.src=rec.url;
+  }
+  renderPanel(); refreshSidebar(); $("#progStat").textContent=`${i+1} / ${order.length}`;
+}
+function drawNoImage(canvas,name){ canvas.width=600;canvas.height=200;const c=canvas.getContext("2d");
+  c.fillStyle="#232732";c.fillRect(0,0,600,200);c.fillStyle="#f5b942";c.font="15px monospace";c.fillText("Image file not found: "+name,20,100); }
+function computeBaseScale(){
+  const canvas=$("#cv"); if(!canvas||!imgEl) return;
+  const stage=$("#stage"); const availW=stage.clientWidth-32, availH=stage.clientHeight-32;
+  baseScale=Math.min(availW/imgEl.naturalWidth, availH/imgEl.naturalHeight, 1);
+}
+// scale tong = anh goc px -> man hinh px
+function dispScale(){ return baseScale*zoom; }
+
+function applyCanvasSize(){
+  const canvas=$("#cv"); if(!canvas||!imgEl) return;
+  const s=dispScale();
+  const cssW=Math.round(imgEl.naturalWidth*s), cssH=Math.round(imgEl.naturalHeight*s);
+  const dpr=window.devicePixelRatio||1;
+  // canvas buffer = kich thuoc hien thi * dpr (net tren man hinh retina)
+  canvas.width=Math.round(cssW*dpr); canvas.height=Math.round(cssH*dpr);
+  canvas.style.width=cssW+"px"; canvas.style.height=cssH+"px";
+  $("#zoomReset").textContent=`Zoom ${Math.round(zoom*100)}%`;
+}
+
+// ---------- draw ----------
+function liveAnns(){ return annsByImage[order[cur]].filter(a=>!removed.has(a.id)); }
+
+function redraw(){
+  const canvas=$("#cv"); if(!canvas||!imgEl) return;
+  applyCanvasSize();
+  const ctx=canvas.getContext("2d");
+  const dpr=window.devicePixelRatio||1;
+  const s=dispScale()*dpr;        // anh goc px -> canvas buffer px
+  // ve anh: scale len, anh goc luon ve full do phan giai -> sac net
+  ctx.setTransform(s,0,0,s,0,0);
+  ctx.imageSmoothingEnabled = zoom<1;   // chi mượt khi thu nho, phong to giu sac
+  ctx.drawImage(imgEl,0,0);
+  ctx.setTransform(1,0,0,1,0,0);        // ve overlay theo pixel buffer that
+
+  // moi toa do anh -> buffer: nhan s. line/font co dinh theo pixel man hinh (nhan dpr).
+  const P = v => v*s;                    // diem anh -> buffer
+  const LW = 1.6*dpr;                    // do day net co dinh ~1.6px man hinh
+  const FS = 12*dpr;                     // co chu co dinh ~12px man hinh
+  const HS = HANDLE*dpr;                 // nua canh handle co dinh
+
+  liveAnns().forEach((a,idx)=>{
+    const [x,y,w,h]=a.bbox; const col=colorForCat(a.category_id); const isSel=a.id===selId;
+    const bx=P(x), by=P(y), bw=P(w), bh=P(h);
+    ctx.lineWidth=isSel?LW*1.6:LW; ctx.strokeStyle=col;
+    ctx.setLineDash(isSel?[LW*3,LW*2]:[]); ctx.strokeRect(bx,by,bw,bh); ctx.setLineDash([]);
+    const txt=`${idx+1}. ${catById[a.category_id]||a.category_id}`;
+    ctx.font=`${FS}px ui-monospace, monospace`;
+    const tw=ctx.measureText(txt).width; const th=FS*1.3;
+    ctx.fillStyle=col; ctx.fillRect(bx, by-th, tw+8*dpr, th);
+    ctx.fillStyle="#08110a"; ctx.fillText(txt, bx+4*dpr, by-th*0.25);
+    if(isSel){ ctx.fillStyle=col; corners(a.bbox).forEach(c=>ctx.fillRect(P(c.x)-HS,P(c.y)-HS,HS*2,HS*2)); }
+  });
+  if(pendingNew && pendingNew.draft){ const [x,y,w,h]=pendingNew.draft;
+    ctx.strokeStyle=warnColor(); ctx.lineWidth=LW; ctx.setLineDash([6*dpr,4*dpr]);
+    ctx.strokeRect(P(x),P(y),P(w),P(h)); ctx.setLineDash([]); }
+}
+function corners(b){ const[x,y,w,h]=b; return [{k:"nw",x,y},{k:"ne",x:x+w,y},{k:"sw",x,y:y+h},{k:"se",x:x+w,y:y+h}]; }
+
+// ---------- panel ----------
+function renderPanel(){ renderEditor(); renderBoxList(); }
+function renderEditor(){
+  const mount=$("#editorMount");
+  const a=selId!=null?annsByImage[order[cur]].find(x=>x.id===selId):null;
+  if(!a||removed.has(a.id)){ mount.innerHTML=""; return; }
+  const [x,y,w,h]=a.bbox;
+  const opts=cats.map(c=>`<option value="${c.id}" ${c.id===a.category_id?"selected":""}>${c.name}</option>`).join("");
+  mount.innerHTML=`<div class="editor"><h3>Selected boxes</h3>
+    <label>Category (or press number key)</label><select id="catSel">${opts}</select>
+    <div class="coords">x:${Math.round(x)} y:${Math.round(y)} · ${Math.round(w)}×${Math.round(h)} px</div>
+    <div class="editor-actions"><button id="delSel" style="color:var(--danger)">✕ Delete boxes</button><button id="deselSel">Deselect</button></div></div>`;
+  $("#catSel").onchange=e=>{ a.category_id=+e.target.value; markEdited(); renderPanel(); redraw(); };
+  $("#delSel").onclick=()=>removeBox(a.id);
+  $("#deselSel").onclick=()=>{ selId=null; renderPanel(); redraw(); };
+}
+function renderBoxList(){
+  const list=$("#boxList"); list.innerHTML="";
+  const anns=annsByImage[order[cur]];
+  if(!anns.length){ list.innerHTML=`<div class="stat" style="padding:8px">No boxes in this image.</div>`; return; }
+  let n=0;
+  anns.forEach(a=>{
+    const isRem=removed.has(a.id); if(!isRem)n++;
+    const num=isRem?"–":n; const [,,w,h]=a.bbox; const cat=catById[a.category_id]||a.category_id;
+    const raw=(a.raw_label&&String(a.raw_label).toLowerCase()!==String(cat).toLowerCase())?`<div class="raw">raw: ${a.raw_label}</div>`:"";
+    const item=document.createElement("div");
+    item.className="box-item"+(isRem?" removed":"")+(a.id===selId?" sel":"");
+    item.innerHTML=`<span class="swatch" style="background:${colorForCat(a.category_id)}"></span>
+      <div class="lbl"><div class="cat">${num}. ${cat}</div><div class="dim">${Math.round(w)}×${Math.round(h)} px</div>${raw}</div>
+      ${isRem?`<button class="undo" data-undo="${a.id}">↩</button>`:`<button class="del" data-del="${a.id}">✕</button>`}`;
+    if(!isRem) item.onclick=ev=>{ if(ev.target.dataset.del) return; selId=a.id; renderPanel(); redraw(); };
+    list.appendChild(item);
+  });
+  list.querySelectorAll("[data-del]").forEach(b=>b.onclick=e=>{e.stopPropagation();removeBox(+b.dataset.del);});
+  list.querySelectorAll("[data-undo]").forEach(b=>b.onclick=e=>{e.stopPropagation();restoreBox(+b.dataset.undo);});
+}
+function markEdited(){ editedImages.add(order[cur]); refreshSidebar(); }
+function removeBox(id){ removed.add(id); lastRemoved.push(id); if(selId===id)selId=null; markEdited(); renderPanel(); redraw(); }
+function restoreBox(id){ removed.delete(id); markEdited(); renderPanel(); redraw(); }
+function undoLast(){ const id=lastRemoved.pop(); if(id!==undefined) restoreBox(id); }
+
+// ---------- interaction ----------
+function attachCanvas(canvas){
+  canvas.style.cursor="default";
+  bindWheelOnce();
+  canvas.onmousedown=e=>{
+    const p=toImg(canvas,e);
+    if(newBoxMode){ pendingNew={draft:[p.x,p.y,0,0], anchor:{x:p.x,y:p.y}}; drag={mode:"new"}; return; }
+    const selA=selId!=null?liveAnns().find(a=>a.id===selId):null;
+    if(selA){ const hk=hitHandle(selA.bbox,p); if(hk){ drag={mode:hk,id:selA.id,sx:p.x,sy:p.y,orig:selA.bbox.slice()}; return; }
+      if(inBox(selA.bbox,p)){ drag={mode:"move",id:selA.id,sx:p.x,sy:p.y,orig:selA.bbox.slice()}; return; } }
+    const hit=[...liveAnns()].reverse().find(a=>inBox(a.bbox,p));
+    if(hit){ selId=hit.id; renderPanel(); redraw(); drag={mode:"move",id:hit.id,sx:p.x,sy:p.y,orig:hit.bbox.slice()}; }
+    else { selId=null; renderPanel(); redraw(); }
+  };
+  canvas.onmousemove=e=>{
+    const p=toImg(canvas,e);
+    if(drag){ if(drag.mode==="new") updateDraft(p); else applyDrag(p); return; }
+    let cs="default"; if(newBoxMode) cs="crosshair";
+    else { const selA=selId!=null?liveAnns().find(a=>a.id===selId):null;
+      if(selA){ const hk=hitHandle(selA.bbox,p); if(hk) cs=(hk==="nw"||hk==="se")?"nwse-resize":"nesw-resize"; else if(inBox(selA.bbox,p)) cs="move"; }
+      else if(liveAnns().some(a=>inBox(a.bbox,p))) cs="pointer"; }
+    canvas.style.cursor=cs;
+  };
+  window.addEventListener("mouseup",endDrag);
+}
+
+// wheel-zoom gan MOT lan, dung canvas hien tai trong DOM
+let wheelBound=false;
+function bindWheelOnce(){
+  if(wheelBound) return; wheelBound=true;
+  $("#stage").addEventListener("wheel",e=>{
+    const canvas=$("#cv"); if(!canvas||!imgEl) return; e.preventDefault();
+    const stage=$("#stage"); const rect=canvas.getBoundingClientRect();
+    const relX=(e.clientX-rect.left)/rect.width, relY=(e.clientY-rect.top)/rect.height;
+    zoom=Math.min(8,Math.max(0.1, zoom*(e.deltaY<0?1.15:1/1.15)));
+    redraw();
+    const nr=canvas.getBoundingClientRect();
+    const targetX=nr.left+relX*nr.width, targetY=nr.top+relY*nr.height;
+    stage.scrollLeft+=(targetX-e.clientX); stage.scrollTop+=(targetY-e.clientY);
+  },{passive:false});
+}
+function endDrag(){
+  if(!drag) return;
+  if(drag.mode==="new"){ const d=pendingNew&&pendingNew.draft; drag=null;
+    if(d && d[2]>=3 && d[3]>=3) openNewBoxPopup(d); else { pendingNew=null; redraw(); } return; }
+  markEdited(); drag=null; renderPanel();
+}
+function toImg(canvas,e){
+  // CSS px tren canvas -> toa do anh goc (chia cho dispScale)
+  const r=canvas.getBoundingClientRect();
+  const s=dispScale();
+  return {x:(e.clientX-r.left)/s, y:(e.clientY-r.top)/s};
+}
+function inBox(b,p){ return p.x>=b[0]&&p.x<=b[0]+b[2]&&p.y>=b[1]&&p.y<=b[1]+b[3]; }
+function hitHandle(b,p){
+  // vung bat handle co dinh theo pixel man hinh -> quy ve anh goc bang /dispScale
+  const tol=(HANDLE*1.8)/dispScale();
+  for(const c of corners(b)) if(Math.abs(p.x-c.x)<=tol&&Math.abs(p.y-c.y)<=tol) return c.k; return null; }
+function applyDrag(p){
+  const a=annsByImage[order[cur]].find(x=>x.id===drag.id); if(!a) return;
+  const dx=p.x-drag.sx, dy=p.y-drag.sy; let [x,y,w,h]=drag.orig;
+  if(drag.mode==="move"){ x+=dx; y+=dy; }
+  else{ let x1=x,y1=y,x2=x+w,y2=y+h;
+    if(drag.mode.includes("n"))y1+=dy; if(drag.mode.includes("s"))y2+=dy;
+    if(drag.mode.includes("w"))x1+=dx; if(drag.mode.includes("e"))x2+=dx;
+    x=Math.min(x1,x2);y=Math.min(y1,y2);w=Math.abs(x2-x1);h=Math.abs(y2-y1); }
+  const W=imgEl.naturalWidth,H=imgEl.naturalHeight; w=Math.max(2,w);h=Math.max(2,h);
+  x=Math.max(0,Math.min(x,W-w)); y=Math.max(0,Math.min(y,H-h));
+  a.bbox=[round1(x),round1(y),round1(w),round1(h)]; a.area=round1(w*h);
+  redraw(); renderEditor();
+}
+function updateDraft(p){
+  const a=pendingNew.anchor; const W=imgEl.naturalWidth,H=imgEl.naturalHeight;
+  const px=Math.max(0,Math.min(p.x,W)), py=Math.max(0,Math.min(p.y,H));
+  pendingNew.draft=[Math.min(a.x,px),Math.min(a.y,py),Math.abs(px-a.x),Math.abs(py-a.y)]; redraw();
+}
+
+// ---------- new boxes popup ----------
+function openNewBoxPopup(d){
+  pendingNew={draft:d};
+  const opts=$("#popupOpts"); opts.innerHTML="";
+  cats.forEach((c,i)=>{ const el=document.createElement("div"); el.className="opt";
+    el.innerHTML=`<span class="key">${i<9?i+1:"·"}</span><span class="sw" style="background:${colorForCat(c.id)}"></span>${c.name}`;
+    el.onclick=()=>commitNewBox(c.id); opts.appendChild(el); });
+  $("#popupMask").style.display="flex";
+}
+function closePopup(){ $("#popupMask").style.display="none"; pendingNew=null; redraw(); }
+function commitNewBox(catId){
+  const [x,y,w,h]=pendingNew.draft;
+  const ann={ id:nextNegId--, image_id:order[cur], category_id:catId,
+    bbox:[round1(x),round1(y),round1(w),round1(h)], area:round1(w*h), iscrowd:0 };
+  coco.annotations.push(ann); annsByImage[order[cur]].push(ann);
+  selId=ann.id; pendingNew=null; $("#popupMask").style.display="none";
+  markEdited(); renderPanel(); redraw();
+}
+$("#popupCancel").onclick=closePopup;
+$("#popupMask").onclick=e=>{ if(e.target.id==="popupMask") closePopup(); };
+
+// help dialog
+function openHelp(){ $("#helpMask").style.display="flex"; }
+function closeHelp(){ $("#helpMask").style.display="none"; }
+$("#helpBtn").onclick=openHelp;
+$("#helpClose").onclick=closeHelp;
+$("#helpMask").onclick=e=>{ if(e.target.id==="helpMask") closeHelp(); };
+
+// ---------- keys ----------
+$("#prevBtn").onclick=()=>go(cur-1);
+$("#nextBtn").onclick=()=>go(cur+1);
+$("#zoomReset").onclick=()=>{ zoom=1; applyCanvasSize(); redraw(); };
+document.addEventListener("keydown",e=>{
+  if(!coco) return;
+  if($("#helpMask").style.display==="flex"){ if(e.key==="Escape") closeHelp(); return; }
+  if($("#popupMask").style.display==="flex"){
+    if(e.key==="Escape") closePopup();
+    else if(e.key>="1"&&e.key<="9"){ const i=+e.key-1; if(i<cats.length) commitNewBox(cats[i].id); }
+    return;
+  }
+  if(e.target.tagName==="SELECT"||e.target.tagName==="INPUT") return;
+  if(e.key==="n"||e.key==="N"){ newBoxMode=true; $("#modePill").style.display="block"; const cv=$("#cv"); if(cv) cv.style.cursor="crosshair"; return; }
+  if(e.key==="ArrowLeft") go(cur-1);
+  else if(e.key==="ArrowRight") go(cur+1);
+  else if(e.key==="Escape"){ if(newBoxMode) exitNewMode(); selId=null; pendingNew=null; renderPanel(); redraw(); }
+  else if(e.key==="0"){ zoom=1; applyCanvasSize(); redraw(); }
+  else if((e.key==="Delete"||e.key==="Backspace")&&selId!=null){ e.preventDefault(); removeBox(selId); }
+  else if(e.key.toLowerCase()==="z") undoLast();
+  else if(e.key.toLowerCase()==="s"){ e.preventDefault(); $("#saveBtn").click(); }
+  else if(e.key>="1"&&e.key<="9" && selId!=null){
+    const i=+e.key-1; if(i<cats.length){ const a=liveAnns().find(x=>x.id===selId); if(a){ a.category_id=cats[i].id; markEdited(); renderPanel(); redraw(); } }
+  }
+});
+document.addEventListener("keyup",e=>{ if(e.key==="n"||e.key==="N") exitNewMode(); });
+function exitNewMode(){ newBoxMode=false; $("#modePill").style.display="none"; const cv=$("#cv"); if(cv) cv.style.cursor="default"; }
+
+// ---------- tabs + class manager ----------
+function switchTab(name){
+  const isBox=name==="box";
+  $("#tabBox").style.display=isBox?"block":"none";
+  $("#tabClass").style.display=isBox?"none":"block";
+  $("#tabBoxBtn").classList.toggle("active",isBox);
+  $("#tabClassBtn").classList.toggle("active",!isBox);
+  if(!isBox) renderClassList();
+}
+$("#tabBoxBtn").onclick=()=>switchTab("box");
+$("#tabClassBtn").onclick=()=>switchTab("class");
+
+function countByCat(catId){
+  let n=0;
+  for(const id of order) for(const a of annsByImage[id]) if(!removed.has(a.id)&&a.category_id===catId) n++;
+  return n;
+}
+function nextCatId(){ return cats.length? Math.max(...cats.map(c=>c.id))+1 : 1; }
+
+function renderClassList(){
+  const list=$("#classList"); list.innerHTML="";
+  cats.forEach(c=>{
+    const cnt=countByCat(c.id);
+    const item=document.createElement("div"); item.className="class-item";
+    item.innerHTML=`<span class="sw" style="background:${colorForCat(c.id)}"></span>
+      <input value="${(c.name||"").replace(/"/g,"&quot;")}" data-id="${c.id}" />
+      <span class="cnt">${cnt} boxes</span>
+      <button class="del" data-del="${c.id}">✕</button>`;
+    list.appendChild(item);
+  });
+  list.querySelectorAll("input[data-id]").forEach(inp=>{
+    inp.onchange=()=>renameCat(+inp.dataset.id, inp.value.trim());
+    inp.onkeydown=e=>{ if(e.key==="Enter") inp.blur(); };
+  });
+  list.querySelectorAll("button[data-del]").forEach(b=>{
+    b.onclick=()=>deleteCat(+b.dataset.del);
+  });
+}
+function renameCat(id,name){
+  if(!name) { renderClassList(); return; }
+  const c=cats.find(x=>x.id===id); if(!c) return;
+  c.name=name; catById[id]=name;
+  renderCatKeys(); renderClassList(); renderPanel(); redraw();
+}
+function addCat(){
+  const inp=$("#newCatName"); const name=inp.value.trim(); if(!name) return;
+  const id=nextCatId(); cats.push({id,name,supercategory:"object"}); catById[id]=name;
+  inp.value=""; renderCatKeys(); renderClassList();
+}
+$("#addCatBtn").onclick=addCat;
+$("#newCatName").addEventListener("keydown",e=>{ if(e.key==="Enter") addCat(); });
+
+function deleteCat(id){
+  const c=cats.find(x=>x.id===id); if(!c) return;
+  const cnt=countByCat(id);
+  const msg=cnt>0
+    ? `Delete class "${c.name}" and ${cnt} boxes in this class? Cannot be undone.`
+    : `Delete class "${c.name}"?`;
+  if(!confirm(msg)) return;
+  // xoa cung boxes (ca live lan removed) thuoc cat nay khoi du lieu
+  const drop=new Set();
+  for(const a of coco.annotations) if(a.category_id===id) drop.add(a.id);
+  coco.annotations=coco.annotations.filter(a=>a.category_id!==id);
+  for(const k of Object.keys(annsByImage)) annsByImage[k]=annsByImage[k].filter(a=>a.category_id!==id);
+  for(const rid of drop) removed.delete(rid);
+  if(selId!=null && drop.has(selId)) selId=null;
+  cats=cats.filter(x=>x.id!==id); delete catById[id];
+  if(cnt>0) editedImages=new Set(order); // danh dau da doi (don gian)
+  renderCatKeys(); renderClassList(); renderPanel(); redraw(); refreshSidebar();
+}
+
+
+function buildCoco(){
+  return { info:coco.info||{}, images:coco.images,
+    annotations:coco.annotations.filter(a=>!removed.has(a.id)).map((a,i)=>({...a,id:i+1})),
+    categories:cats };
+}
+$("#saveBtn").onclick=async ()=>{
+  const out=buildCoco(); const text=JSON.stringify(out,null,2);
+  if(annFileHandle && annFileHandle.createWritable){
+    try{
+      const w=await annFileHandle.createWritable(); await w.write(text); await w.close();
+      const kept=out.annotations.length;
+      $("#loadStat").textContent=`✓ Overwrote annotations.json · ${kept} boxes · edited ${editedImages.size} images`;
+      editedImages=new Set(); refreshSidebar(); return;
+    }catch(err){ alert("Overwrite error: "+err.message+" — downloading file instead."); }
+  }
+  const blob=new Blob([text],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="annotations.json"; a.click();
+  $("#loadStat").textContent=`Downloaded annotations.json (browser has no overwrite support) · ${out.annotations.length} boxes`;
+};
+
+// ---------- restore last folder ----------
+tryRestoreLastDir();
+</script>
+</body>
+</html>
