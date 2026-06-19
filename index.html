@@ -8,6 +8,12 @@
   :root{--bg:#14161a;--panel:#1c1f26;--panel-2:#232732;--line:#2e333f;--ink:#e6e9ef;--muted:#8b93a3;--accent:#4ade80;--danger:#f1646c;--warn:#f5b942;
     font-family:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;}
   *{box-sizing:border-box;}
+  * {scrollbar-width: thin;scrollbar-color: var(--line) var(--panel);}
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: var(--panel); }
+  *::-webkit-scrollbar-thumb {background: var(--line);border: 2px solid var(--panel);border-radius: 999px;}
+  *::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+  *::-webkit-scrollbar-corner { background: var(--panel); }
   body{margin:0;background:var(--bg);color:var(--ink);font-size:13px;line-height:1.5;}
   header{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10;}
   header h1{font-size:14px;margin:0;font-weight:600;letter-spacing:.02em;} header h1 .dot{color:var(--accent);}
